@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Globle - 3D Mystery Country Game</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            overflow: hidden;
+            background-color: #0b0f19;
+            color: #f3f4f6;
+            user-select: none;
+        }
+
+        /* Custom Scrollbar for side panel */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(51, 65, 85, 0.8);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(71, 85, 105, 1);
+        }
+
+        /* Glow effects */
+        .neon-glow {
+            box-shadow: 0 0 25px -5px rgba(59, 130, 246, 0.4);
+        }
+        .heat-badge {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .backdrop-blur-custom {
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        /* Loading spinner */
+        .spinner {
+            border: 3px solid rgba(255,255,255,0.1);
+            border-radius: 50%;
+            border-top: 3px solid #3b82f6;
+            width: 36px;
+            height: 36px;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col md:flex-row overflow-hidden relative select-none">
+
+    <!-- Loading Screen Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950 transition-opacity duration-500">
+        <div class="spinner mb-4"></div>
+        <h2 class="text-xl font-bold text-slate-200 tracking-wider">GENERATING GLOBE MAP</h2>
+        <p class="text-xs text-slate-400 mt-2" id="loadingProgressText">Loading geospatial country boundary data...</p>
+    </div>
+
+    <!-- MAIN 3D CANVAS CONTAINER -->
+    <div class="relative flex-1 h-full w-full">
+        <div id="globeContainer" class="w-full h-full cursor-grab active:cursor-grabbing"></div>
+
+        <!-- Top Header Overlay (HUD) -->
+        <div class="absolute top-4 left-4 right-4 md:right-auto z-10 flex items-center justify-between gap-3 pointer-events-none">
+            <div class="flex items-center gap-3 bg-slate-900/80 backdrop-blur-custom p-2 pr-4 rounded-2xl border border-slate-700/50 pointer-events-auto shadow-xl">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/30">
+                    <i class="fa-solid font-bold text-white text-xl">🌐</i>
+                </div>
+                <div>
+                    <h1 class="font-extrabold text-lg text-white tracking-wide leading-none">GLOBLE</h1>
+                    <p class="text-[10px] text-blue-400 font-medium tracking-wider uppercase mt-0.5">3D World Mystery</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 pointer-events-auto">
+                <button id="unitToggleBtn" class="bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/60 px-3 py-2 rounded-xl text-xs font-semibold backdrop-blur-custom transition-all flex items-center gap-1.5 shadow-lg">
+                    <i class="fa-solid fa-ruler-horizontal text-blue-400"></i>
+                    <span id="unitText">KM</span>
+                </button>
+                <button id="helpBtn" class="bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/60 w-9 h-9 rounded-xl backdrop-blur-custom transition-all flex items-center justify-center shadow-lg">
+                    <i class="fa-solid fa-circle-question text-base"></i>
+                </button>
+                <button id="statsBtn" class="bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-700/60 w-9 h-9 rounded-xl backdrop-blur-custom transition-all flex items-center justify-center shadow-lg">
+                    <i class="fa-solid fa-chart-simple text-base"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Heat Legend HUD -->
+        <div class="absolute bottom-4 left-4 z-10 hidden sm:flex items-center gap-2 bg-slate-900/80 backdrop-blur-custom p-2.5 px-4 rounded-2xl border border-slate-700/50 shadow-xl pointer-events-auto">
+            <span class="text-xs font-bold text-slate-400 mr-1">Proximity:</span>
+            <div class="flex items-center gap-1 text-[11px] font-semibold">
+                <span class="flex items-center gap-1 text-blue-400"><span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Cold</span>
+                <span class="text-slate-600">→</span>
+                <span class="flex items-center gap-1 text-yellow-400"><span class="w-2.5 h-2.5 rounded-full bg-yellow-400"></span> Warm</span>
+                <span class="text-slate-600">→</span>
+                <span class="flex items-center gap-1 text-red-500"><span class="w-2.5 h-2.5 rounded-full bg-red-500"></span> Hot</span>
+                <span class="text-slate-600">→</span>
+                <span class="flex items-center gap-1 text-emerald-400"><span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span> Target</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- SIDEBAR PANEL (Search Input, Guess History & Controls) -->
+    <div class="w-full md:w-[420px] h-[50vh] md:h-full bg-slate-900/90 border-t md:border-t-0 md:border-l border-slate-800/80 flex flex-col z-20 backdrop-blur-custom shadow-2xl">
+        
+        <!-- Search Header Section -->
+        <div class="p-4 border-b border-slate-800/80 flex flex-col gap-3">
+            <div class="flex items-center justify-between text-xs text-slate-400 font-semibold px-1">
+                <span>Guess the secret country</span>
+                <span id="guessCounter">Guesses: <strong class="text-white">0</strong></span>
+            </div>
+
+            <!-- Search Input Container -->
+            <div class="relative">
+                <div class="relative flex items-center">
+                    <i class="fa-solid fa-earth-americas absolute left-3.5 text-slate-400"></i>
+                    <input type="text" id="countryInput" placeholder="Type country name..." 
+                           autocomplete="off"
+                           class="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl py-3 pl-10 pr-24 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all">
+                    <button id="submitGuessBtn" class="absolute right-1.5 top-1.5 bottom-1.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs px-4 rounded-lg transition-all shadow-md active:scale-95">
+                        Guess
+                    </button>
+                </div>
+
+                <!-- Autocomplete Dropdown List -->
+                <div id="autocompleteList" class="absolute left-0 right-0 top-full mt-1.5 bg-slate-950/95 border border-slate-800 rounded-xl max-h-56 overflow-y-auto z-50 hidden shadow-2xl divide-y divide-slate-800/50"></div>
+            </div>
+        </div>
+
+        <!-- Best Guess Metric Header -->
+        <div id="bestGuessBanner" class="hidden px-4 py-2.5 bg-slate-950/60 border-b border-slate-800/60 flex items-center justify-between text-xs">
+            <span class="text-slate-400">Closest Guess so far:</span>
+            <div class="flex items-center gap-2">
+                <span id="bestCountryName" class="font-bold text-white">---</span>
+                <span id="bestCountryDist" class="font-extrabold px-2 py-0.5 rounded-full bg-slate-800 text-blue-400 text-[11px]">---</span>
+            </div>
+        </div>
+
+        <!-- Guess Log List -->
+        <div class="flex-1 overflow-y-auto p-4 space-y-2.5" id="guessList">
+            <!-- Empty State Prompt -->
+            <div id="emptyState" class="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500">
+                <div class="w-16 h-16 rounded-2xl bg-slate-800/50 flex items-center justify-center text-3xl mb-3 text-slate-600">
+                    <i class="fa-solid fa-location-crosshairs"></i>
+                </div>
+                <p class="text-sm font-medium text-slate-400">No guesses yet!</p>
+                <p class="text-xs text-slate-500 mt-1 max-w-[200px]">Enter a country name above to test your geography skills.</p>
+            </div>
+        </div>
+
+        <!-- Bottom Actions Bar -->
+        <div class="p-3 border-t border-slate-800/80 bg-slate-950/40 flex items-center gap-2">
+            <button id="giveUpBtn" class="flex-1 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/50 text-xs font-semibold py-2.5 px-3 rounded-xl transition-all flex items-center justify-center gap-2">
+                <i class="fa-solid fa-flag"></i> Give Up / Reveal
+            </button>
+            <button id="newGameBtn" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold py-2.5 px-3 rounded-xl transition-all flex items-center justify-center gap-2">
+                <i class="fa-solid fa-rotate-right"></i> Random Target
+            </button>
+        </div>
+    </div>
+
+    <!-- MODAL: HELP / RULES -->
+    <div id="helpModal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-md p-6 relative shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <button class="closeModalBtn absolute top-4 right-4 text-slate-400 hover:text-white text-lg"><i class="fa-solid fa-xmark"></i></button>
+            
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-10 h-10 rounded-xl bg-blue-600/20 text-blue-400 flex items-center justify-center text-xl font-bold">
+                    <i class="fa-solid fa-circle-info"></i>
+                </div>
+                <h3 class="text-lg font-bold text-white">How to Play Globle</h3>
+            </div>
+
+            <div class="space-y-3 text-xs text-slate-300 leading-relaxed">
+                <p>Every guess brings you closer to discovering the secret mystery country!</p>
+                <div class="p-3 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-blue-500"></span> Cool Blue</span>
+                        <span class="text-slate-400 font-medium">Far away (> 5,000 km)</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-yellow-400"></span> Warm Yellow</span>
+                        <span class="text-slate-400 font-medium">Getting closer (1,500 - 5,000 km)</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-red-500"></span> Hot Red</span>
+                        <span class="text-slate-400 font-medium">Very close! (&lt; 1,500 km)</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-emerald-400"></span> Emerald Gold</span>
+                        <span class="text-slate-400 font-bold">Correct Mystery Country!</span>
+                    </div>
+                </div>
+                <p>• The direction arrow indicates which compass direction you must travel from your guess towards the target.</p>
+                <p>• Rotate, pan, and zoom the 3D globe to inspect borders and proximity highlights.</p>
+            </div>
+
+            <button class="closeModalBtn w-full mt-6 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 rounded-xl text-xs transition-all">Got It!</button>
+        </div>
+    </div>
+
+    <!-- MODAL: STATS -->
+    <div id="statsModal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-sm p-6 relative shadow-2xl">
+            <button class="closeModalBtn absolute top-4 right-4 text-slate-400 hover:text-white text-lg"><i class="fa-solid fa-xmark"></i></button>
+            <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                <i class="fa-solid fa-chart-pie text-blue-400"></i> Your Game Stats
+            </h3>
+            
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-center">
+                    <div class="text-2xl font-extrabold text-blue-400" id="statPlayed">0</div>
+                    <div class="text-[10px] text-slate-400 uppercase font-semibold tracking-wider mt-1">Played</div>
+                </div>
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-center">
+                    <div class="text-2xl font-extrabold text-emerald-400" id="statWon">0</div>
+                    <div class="text-[10px] text-slate-400 uppercase font-semibold tracking-wider mt-1">Won</div>
+                </div>
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-center">
+                    <div class="text-2xl font-extrabold text-yellow-400" id="statStreak">0</div>
+                    <div class="text-[10px] text-slate-400 uppercase font-semibold tracking-wider mt-1">Current Streak</div>
+                </div>
+                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-center">
+                    <div class="text-2xl font-extrabold text-purple-400" id="statAvg">0</div>
+                    <div class="text-[10px] text-slate-400 uppercase font-semibold tracking-wider mt-1">Avg Guesses</div>
+                </div>
+            </div>
+
+            <button class="closeModalBtn w-full bg-slate-800 hover:bg-slate-700 text-white font-semibold py-2.5 rounded-xl text-xs transition-all">Close</button>
+        </div>
+    </div>
+
+    <!-- MODAL: VICTORY / REVEAL -->
+    <div id="victoryModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700/80 rounded-2xl w-full max-w-md p-6 relative shadow-2xl text-center">
+            <div class="w-16 h-16 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-3xl text-white mx-auto mb-4 shadow-lg shadow-emerald-500/30 animate-bounce" id="modalIcon">
+                🎉
+            </div>
+            <h2 class="text-2xl font-extrabold text-white mb-1" id="victoryTitle">Congratulations!</h2>
+            <p class="text-xs text-slate-400 mb-4" id="victorySubtitle">You guessed the secret country!</p>
+
+            <div class="bg-slate-950/80 p-4 rounded-xl border border-slate-800 mb-5 text-center">
+                <p class="text-xs text-slate-400 uppercase tracking-widest font-semibold mb-1">Mystery Country</p>
+                <div id="revealedCountryName" class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-200">---</div>
+                <div id="revealedCountryMeta" class="text-xs text-slate-400 mt-2 font-medium">Guesses: <span id="finalGuessCount" class="text-white font-bold">0</span></div>
+            </div>
+
+            <div class="flex gap-3">
+                <button id="shareBtn" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-share-nodes"></i> Share Result
+                </button>
+                <button id="playAgainBtn" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 rounded-xl text-xs transition-all shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-play"></i> Play Again
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border border-slate-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-2xl pointer-events-none opacity-0 transition-opacity duration-300">
+        Notification Message
+    </div>
+
+    <script>
+        /* WORLD COUNTRIES DATASET WITH BOUNDARIES AND CENTROIDS */
+        // GEOJSON / TOPOLOGY SYNTHESIS AND GAME ENGINE
+        let countriesData = [];
+        let secretCountry = null;
+        let guesses = [];
+        let distanceUnit = 'KM'; // 'KM' or 'MILES'
+        let stats = { played: 0, won: 0, streak: 0, totalGuesses: 0 };
+
+        // THREE.JS SCENE VARIABLES
+        let scene, camera, renderer, controls;
+        let globeSphere, atmosphereSphere;
+        let canvasTexture, canvasCtx;
+        let texWidth = 2048, texHeight = 1024;
+        let isGameFinished = false;
+
+        // DOM ELEMENTS
+        const countryInput = document.getElementById('countryInput');
+        const submitGuessBtn = document.getElementById('submitGuessBtn');
+        const autocompleteList = document.getElementById('autocompleteList');
+        const guessList = document.getElementById('guessList');
+        const emptyState = document.getElementById('emptyState');
+        const guessCounter = document.getElementById('guessCounter');
+        const unitToggleBtn = document.getElementById('unitToggleBtn');
+        const unitText = document.getElementById('unitText');
+        const helpBtn = document.getElementById('helpBtn');
+        const statsBtn = document.getElementById('statsBtn');
+        const helpModal = document.getElementById('helpModal');
+        const statsModal = document.getElementById('statsModal');
+        const victoryModal = document.getElementById('victoryModal');
+        const giveUpBtn = document.getElementById('giveUpBtn');
+        const newGameBtn = document.getElementById('newGameBtn');
+        const playAgainBtn = document.getElementById('playAgainBtn');
+        const shareBtn = document.getElementById('shareBtn');
+        const bestGuessBanner = document.getElementById('bestGuessBanner');
+
+        // Load stats from localStorage
+        function loadStats() {
+            const saved = localStorage.getItem('globle_stats_3d');
+            if (saved) {
+                try { stats = JSON.parse(saved); } catch(e){}
+            }
+        }
+
+        function saveStats() {
+            localStorage.setItem('globle_stats_3d', JSON.stringify(stats));
+        }
+
+        // Fetch Country Boundaries Data (Simplified GeoJSON)
+        async function fetchWorldData() {
+            const progressText = document.getElementById('loadingProgressText');
+            progressText.innerText = 'Downloading world geographic boundaries...';
+
+            try {
+                // Using standard high quality GeoJSON dataset
+                const response = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+                const topoData = await response.json();
+                
+                progressText.innerText = 'Processing country boundaries & coordinates...';
+
+                // We load topojson parser or fallback to simplified country polygons
+                if (window.topojson) {
+                    processTopoJSON(topoData);
+                } else {
+                    // Inject topojson script dynamically
+                    const script = document.createElement('script');
+                    script.src = "https://cdn.jsdelivr.net/npm/topojson-client@3";
+                    script.onload = () => {
+                        const geojson = topojson.feature(topoData, topoData.objects.countries);
+                        parseGeoJSON(geojson);
+                    };
+                    document.head.appendChild(script);
+                }
+            } catch (err) {
+                console.warn('Fallback to embedded simplified country centroid list', err);
+                fallbackLoadCountries();
+            }
+        }
+
+        function parseGeoJSON(geojson) {
+            // Country Name mapping dictionary for ID to standard English Names
+            const countryNamesMap = {
+                "4": "Afghanistan", "8": "Albania", "12": "Algeria", "24": "Angola", "10": "Antarctica",
+                "32": "Argentina", "51": "Armenia", "36": "Australia", "40": "Austria", "31": "Azerbaijan",
+                "44": "Bahamas", "50": "Bangladesh", "112": "Belarus", "56": "Belgium", "84": "Belize",
+                "204": "Benin", "64": "Bhutan", "68": "Bolivia", "70": "Bosnia and Herz.", "72": "Botswana",
+                "76": "Brazil", "96": "Brunei", "100": "Bulgaria", "854": "Burkina Faso", "108": "Burundi",
+                "116": "Cambodia", "120": "Cameroon", "124": "Canada", "140": "Central African Rep.",
+                "148": "Chad", "152": "Chile", "156": "China", "170": "Colombia", "178": "Congo",
+                "180": "Dem. Rep. Congo", "188": "Costa Rica", "191": "Croatia", "192": "Cuba",
+                "196": "Cyprus", "203": "Czechia", "208": "Denmark", "262": "Djibouti", "214": "Dominican Rep.",
+                "218": "Ecuador", "818": "Egypt", "222": "El Salvador", "232": "Eritrea", "233": "Estonia",
+                "231": "Ethiopia", "242": "Fiji", "246": "Finland", "250": "France", "266": "Gabon",
+                "270": "Gambia", "268": "Georgia", "276": "Germany", "288": "Ghana", "300": "Greece",
+                "304": "Greenland", "320": "Guatemala", "324": "Guinea", "624": "Guinea-Bissau", "328": "Guyana",
+                "332": "Haiti", "340": "Honduras", "348": "Hungary", "352": "Iceland", "356": "India",
+                "360": "Indonesia", "364": "Iran", "368": "Iraq", "372": "Ireland", "376": "Israel",
+                "380": "Italy", "388": "Jamaica", "392": "Japan", "400": "Jordan", "398": "Kazakhstan",
+                "404": "Kenya", "408": "North Korea", "410": "South Korea", "414": "Kuwait", "417": "Kyrgyzstan",
+                "418": "Laos", "428": "Latvia", "422": "Lebanon", "426": "Lesotho", "430": "Liberia",
+                "434": "Libya", "440": "Lithuania", "442": "Luxembourg", "807": "Macedonia", "450": "Madagascar",
+                "454": "Malawi", "458": "Malaysia", "466": "Mali", "478": "Mauritania", "484": "Mexico",
+                "498": "Moldova", "496": "Mongolia", "499": "Montenegro", "504": "Morocco", "508": "Mozambique",
+                "104": "Myanmar", "516": "Namibia", "524": "Nepal", "528": "Netherlands", "554": "New Zealand",
+                "558": "Nicaragua", "562": "Niger", "566": "Nigeria", "578": "Norway", "512": "Oman",
+                "586": "Pakistan", "591": "Panama", "598": "Papua New Guinea", "600": "Paraguay", "604": "Peru",
+                "608": "Philippines", "616": "Poland", "620": "Portugal", "634": "Qatar", "642": "Romania",
+                "643": "Russia", "646": "Rwanda", "682": "Saudi Arabia", "686": "Senegal", "688": "Serbia",
+                "694": "Sierra Leone", "702": "Singapore", "703": "Slovakia", "705": "Slovenia", "706": "Somalia",
+                "710": "South Africa", "728": "South Sudan", "724": "Spain", "144": "Sri Lanka", "729": "Sudan",
+                "740": "Suriname", "748": "Eswatini", "752": "Sweden", "756": "Switzerland", "760": "Syria",
+                "158": "Taiwan", "762": "Tajikistan", "834": "Tanzania", "764": "Thailand", "768": "Togo",
+                "780": "Trinidad and Tobago", "788": "Tunisia", "792": "Turkey", "795": "Turkmenistan",
+                "800": "Uganda", "804": "Ukraine", "784": "United Arab Emirates", "826": "United Kingdom",
+                "840": "United States of America", "858": "Uruguay", "860": "Uzbekistan", "862": "Venezuela",
+                "704": "Vietnam", "887": "Yemen", "894": "Zambia", "716": "Zimbabwe"
+            };
+
+            countriesData = geojson.features.map(feature => {
+                const id = String(feature.id);
+                const name = countryNamesMap[id] || feature.properties.name || "Unknown Country";
+                
+                // Calculate rough centroid (lat/lon)
+                let totalLat = 0, totalLon = 0, count = 0;
+                
+                const processCoords = (coords) => {
+                    coords.forEach(pt => {
+                        if (typeof pt[0] === 'number') {
+                            totalLon += pt[0];
+                            totalLat += pt[1];
+                            count++;
+                        } else {
+                            processCoords(pt);
+                        }
+                    });
+                };
+                processCoords(feature.geometry.coordinates);
+
+                const centerLon = count > 0 ? totalLon / count : 0;
+                const centerLat = count > 0 ? totalLat / count : 0;
+
+                return {
+                    id: id,
+                    name: name,
+                    lat: centerLat,
+                    lon: centerLon,
+                    geometry: feature.geometry
+                };
+            }).filter(c => c.name !== "Unknown Country" && c.name !== "Antarctica");
+
+            // Sort alphabetically
+            countriesData.sort((a, b) => a.name.localeCompare(b.name));
+
+            initTextureAndGlobe();
+            startNewGame();
+
+            // Hide loading screen
+            document.getElementById('loadingOverlay').classList.add('opacity-0');
+            setTimeout(() => {
+                document.getElementById('loadingOverlay').classList.add('hidden');
+            }, 500);
+        }
+
+        function fallbackLoadCountries() {
+            // Minimal fallback centroids if network fails
+            countriesData = [
+                { name: "United States of America", lat: 37.09, lon: -95.71 },
+                { name: "France", lat: 46.22, lon: 2.21 },
+                { name: "Brazil", lat: -14.23, lon: -51.92 },
+                { name: "Japan", lat: 36.20, lon: 138.25 },
+                { name: "India", lat: 20.59, lon: 78.96 },
+                { name: "Egypt", lat: 26.82, lon: 30.80 },
+                { name: "Australia", lat: -25.27, lon: 133.77 },
+                { name: "Canada", lat: 56.13, lon: -106.34 }
+            ];
+            initTextureAndGlobe();
+            startNewGame();
+            document.getElementById('loadingOverlay').classList.add('hidden');
+        }
+
+        function initThreeJS() {
+            const container = document.getElementById('globeContainer');
+            scene = new THREE.Scene();
+
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(0, 0, 320);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.rotateSpeed = 0.8;
+            controls.zoomSpeed = 1.2;
+            controls.minDistance = 150;
+            controls.maxDistance = 500;
+
+            // Lighting setup
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xffffff, 0.6);
+            sunLight.position.set(5, 3, 5);
+            scene.add(sunLight);
+
+            // Background Stars Space Particles
+            createStarfield();
+
+            // Resize handle
+            window.addEventListener('resize', onWindowResize);
+
+            // Render loop
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+
+                // Slow ambient spin if idle
+                if (!controls.state == -1) {
+                    globeSphere.rotation.y += 0.0005;
+                }
+                renderer.render(scene, camera);
+            }
+            animate();
+        }
+
+        function createStarfield() {
+            const starsGeometry = new THREE.BufferGeometry();
+            const count = 1200;
+            const positions = new Float32Array(count * 3);
+
+            for (let i = 0; i < count * 3; i += 3) {
+                positions[i] = (Math.random() - 0.5) * 1200;
+                positions[i + 1] = (Math.random() - 0.5) * 1200;
+                positions[i + 2] = (Math.random() - 0.5) * 1200;
+            }
+
+            starsGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const starsMaterial = new THREE.PointsMaterial({ color: 0x64748b, size: 1, transparent: true, opacity: 0.6 });
+            const starMesh = new THREE.Points(starsGeometry, starsMaterial);
+            scene.add(starMesh);
+        }
+
+        function initTextureAndGlobe() {
+            // Offscreen Canvas for texture generation
+            const canvas = document.createElement('canvas');
+            canvas.width = texWidth;
+            canvas.height = texHeight;
+            canvasCtx = canvas.getContext('2d');
+
+            canvasTexture = new THREE.CanvasTexture(canvas);
+            canvasTexture.wrapS = THREE.ClampToEdgeWrapping;
+            canvasTexture.wrapT = THREE.ClampToEdgeWrapping;
+
+            // Globe Mesh Sphere
+            const globeGeo = new THREE.SphereGeometry(100, 64, 64);
+            const globeMat = new THREE.MeshPhongMaterial({
+                map: canvasTexture,
+                shininess: 15,
+                specular: new THREE.Color(0x1e293b)
+            });
+
+            globeSphere = new THREE.Mesh(globeGeo, globeMat);
+            scene.add(globeSphere);
+
+            // Glow Atmosphere Mesh Outer Sphere
+            const atmosGeo = new THREE.SphereGeometry(102, 64, 64);
+            const atmosMat = new THREE.MeshBasicMaterial({
+                color: 0x3b82f6,
+                transparent: true,
+                opacity: 0.08,
+                side: THREE.BackSide
+            });
+            atmosphereSphere = new THREE.Mesh(atmosGeo, atmosMat);
+            scene.add(atmosphereSphere);
+
+            redrawGlobeTexture();
+        }
+
+        // Convert Lon/Lat coordinates to Canvas X/Y pixel points
+        function lonLatToCanvas(lon, lat) {
+            const x = ((lon + 180) / 360) * texWidth;
+            const y = ((90 - lat) / 180) * texHeight;
+            return { x, y };
+        }
+
+        // Draw and update Heatmap colors on the 2D canvas texture
+        function redrawGlobeTexture() {
+            if (!canvasCtx) return;
+
+            // Fill Deep Ocean Blue
+            canvasCtx.fillStyle = "#0a1128";
+            canvasCtx.fillRect(0, 0, texWidth, texHeight);
+
+            // Draw Subtle Grid Lines (Latitude / Longitude lines)
+            canvasCtx.strokeStyle = "rgba(255, 255, 255, 0.04)";
+            canvasCtx.lineWidth = 1;
+
+            for (let lon = -180; lon <= 180; lon += 30) {
+                const { x } = lonLatToCanvas(lon, 0);
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(x, 0);
+                canvasCtx.lineTo(x, texHeight);
+                canvasCtx.stroke();
+            }
+            for (let lat = -90; lat <= 90; lat += 30) {
+                const { y } = lonLatToCanvas(0, lat);
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(0, y);
+                canvasCtx.lineTo(texWidth, y);
+                canvasCtx.stroke();
+            }
+
+            // Draw Countries Polygons
+            countriesData.forEach(country => {
+                const guessObj = guesses.find(g => g.country.name === country.name);
+                
+                let fillColor = "#1e293b"; // Default untouched country slate
+                let strokeColor = "#334155";
+
+                if (guessObj) {
+                    fillColor = guessObj.color;
+                    strokeColor = "#ffffff";
+                }
+
+                canvasCtx.fillStyle = fillColor;
+                canvasCtx.strokeStyle = strokeColor;
+                canvasCtx.lineWidth = guessObj ? 1.5 : 0.7;
+
+                if (country.geometry) {
+                    drawGeometry(country.geometry);
+                } else {
+                    // Fallback point marker
+                    const { x, y } = lonLatToCanvas(country.lon, country.lat);
+                    canvasCtx.beginPath();
+                    canvasCtx.arc(x, y, 8, 0, Math.PI * 2);
+                    canvasCtx.fill();
+                    canvasCtx.stroke();
+                }
+            });
+
+            canvasTexture.needsUpdate = true;
+        }
+
+        function drawGeometry(geometry) {
+            const type = geometry.type;
+            const coordinates = geometry.coordinates;
+
+            if (type === "Polygon") {
+                drawPolygon(coordinates);
+            } else if (type === "MultiPolygon") {
+                coordinates.forEach(poly => drawPolygon(poly));
+            }
+        }
+
+        function drawPolygon(rings) {
+            rings.forEach((ring, index) => {
+                canvasCtx.beginPath();
+                ring.forEach((pt, i) => {
+                    const { x, y } = lonLatToCanvas(pt[0], pt[1]);
+                    if (i === 0) canvasCtx.moveTo(x, y);
+                    else canvasCtx.lineTo(x, y);
+                });
+                canvasCtx.closePath();
+                canvasCtx.fill();
+                canvasCtx.stroke();
+            });
+        }
+
+        // Haversine Spherical Distance formula in km
+        function calculateDistanceKm(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Earth radius km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = 
+                Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return Math.round(R * c);
+        }
+
+        // Compass Heading Bearing calculation (0° N, 90° E, 180° S, 270° W)
+        function calculateBearing(lat1, lon1, lat2, lon2) {
+            const phi1 = lat1 * Math.PI / 180;
+            const phi2 = lat2 * Math.PI / 180;
+            const deltaLambda = (lon2 - lon1) * Math.PI / 180;
+
+            const y = Math.sin(deltaLambda) * Math.cos(phi2);
+            const x = Math.cos(phi1) * Math.sin(phi2) -
+                      Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
+
+            let theta = Math.atan2(y, x);
+            let bearing = (theta * 180 / Math.PI + 360) % 360;
+            return Math.round(bearing);
+        }
+
+        // Map Distance to Globle Heat Map Color Code
+        function getProximityColor(distKm) {
+            if (distKm === 0) return "#10b981"; // Target Green
+            if (distKm < 800) return "#ef4444";  // Hot Red
+            if (distKm < 2000) return "#f97316"; // Orange
+            if (distKm < 4000) return "#facc15"; // Yellow
+            if (distKm < 7000) return "#3b82f6"; // Blue
+            return "#475569";                   // Cool Slate
+        }
+
+        function startNewGame() {
+            if (countriesData.length === 0) return;
+            
+            // Randomly select secret mystery country
+            secretCountry = countriesData[Math.floor(Math.random() * countriesData.length)];
+            guesses = [];
+            isGameFinished = false;
+
+            // Clear UI
+            guessList.innerHTML = '';
+            guessList.appendChild(emptyState);
+            emptyState.classList.remove('hidden');
+            bestGuessBanner.classList.add('hidden');
+            guessCounter.innerHTML = `Guesses: <strong class="text-white">0</strong>`;
+            countryInput.value = '';
+
+            redrawGlobeTexture();
+        }
+
+        function handleGuess(countryName) {
+            if (isGameFinished) return;
+
+            const country = countriesData.find(c => c.name.toLowerCase() === countryName.toLowerCase().trim());
+            
+            if (!country) {
+                showToast("Country not found in dataset!");
+                return;
+            }
+
+            if (guesses.some(g => g.country.name === country.name)) {
+                showToast("You already guessed " + country.name);
+                return;
+            }
+
+            const distKm = calculateDistanceKm(country.lat, country.lon, secretCountry.lat, secretCountry.lon);
+            const bearing = calculateBearing(country.lat, country.lon, secretCountry.lat, secretCountry.lon);
+            const color = getProximityColor(distKm);
+
+            const guessObj = {
+                country: country,
+                distKm: distKm,
+                bearing: bearing,
+                color: color
+            };
+
+            guesses.push(guessObj);
+            
+            // Rotate Globe Camera toward guessed country
+            rotateGlobeTo(country.lat, country.lon);
+
+            // Update UI & Canvas
+            redrawGlobeTexture();
+            renderGuessList();
+
+            // Clear Input
+            countryInput.value = '';
+            autocompleteList.classList.add('hidden');
+
+            // Check Win Condition
+            if (country.name === secretCountry.name) {
+                onWinGame();
+            }
+        }
+
+        function rotateGlobeTo(lat, lon) {
+            // Convert Lat/Lon to 3D Cartesian coordinates on sphere
+            const phi = (90 - lat) * (Math.PI / 180);
+            const theta = (lon + 180) * (Math.PI / 180);
+            const radius = 320;
+
+            const x = -(radius * Math.sin(phi) * Math.cos(theta));
+            const z = (radius * Math.sin(phi) * Math.sin(theta));
+            const y = (radius * Math.cos(phi));
+
+            // Smooth camera transition using GSAP or simple linear step animation
+            const startPos = camera.position.clone();
+            const targetPos = new THREE.Vector3(x, y, z);
+            let progress = 0;
+
+            function animateCamera() {
+                progress += 0.05;
+                camera.position.lerpVectors(startPos, targetPos, progress);
+                camera.lookAt(0, 0, 0);
+                if (progress < 1) {
+                    requestAnimationFrame(animateCamera);
+                }
+            }
+            animateCamera();
+        }
+
+        function renderGuessList() {
+            emptyState.classList.add('hidden');
+            guessList.innerHTML = '';
+
+            // Sort guesses so closest appears at top or chronological
+            const sortedGuesses = [...guesses].reverse();
+
+            // Find closest guess
+            let bestGuess = [...guesses].sort((a, b) => a.distKm - b.distKm)[0];
+            if (bestGuess) {
+                bestGuessBanner.classList.remove('hidden');
+                document.getElementById('bestCountryName').innerText = bestGuess.country.name;
+                const distText = distanceUnit === 'KM' ? `${bestGuess.distKm.toLocaleString()} km` : `${Math.round(bestGuess.distKm * 0.621371).toLocaleString()} mi`;
+                document.getElementById('bestCountryDist').innerText = distText;
+            }
+
+            guessCounter.innerHTML = `Guesses: <strong class="text-white">${guesses.length}</strong>`;
+
+            sortedGuesses.forEach((g) => {
+                const card = document.createElement('div');
+                card.className = "bg-slate-950/80 border border-slate-800/80 rounded-xl p-3 flex items-center justify-between text-xs transition-all hover:border-slate-700";
+
+                const distDisplay = distanceUnit === 'KM' 
+                    ? `${g.distKm.toLocaleString()} km` 
+                    : `${Math.round(g.distKm * 0.621371).toLocaleString()} mi`;
+
+                const isTarget = g.distKm === 0;
+
+                card.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="w-3.5 h-3.5 rounded-full flex-shrink-0 heat-badge shadow-md" style="background-color: ${g.color}"></div>
+                        <span class="font-bold text-slate-100">${g.country.name}</span>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <span class="font-mono text-slate-400 font-semibold">${distDisplay}</span>
+                        ${!isTarget ? `
+                            <div class="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 flex items-center justify-center text-blue-400 font-bold" title="Direction to target">
+                                <i class="fa-solid fa-location-arrow" style="transform: rotate(${g.bearing - 45}deg)"></i>
+                            </div>
+                        ` : `
+                            <div class="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center text-emerald-400 font-bold">
+                                <i class="fa-solid fa-check"></i>
+                            </div>
+                        `}
+                    </div>
+                `;
+                guessList.appendChild(card);
+            });
+        }
+
+        function onWinGame() {
+            isGameFinished = true;
+            stats.played++;
+            stats.won++;
+            stats.streak++;
+            stats.totalGuesses += guesses.length;
+            saveStats();
+
+            // Fire Confetti
+            confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+
+            // Show Win Modal
+            setTimeout(() => {
+                document.getElementById('modalIcon').innerText = '🎉';
+                document.getElementById('victoryTitle').innerText = 'Brilliant Victory!';
+                document.getElementById('victorySubtitle').innerText = 'You discovered the mystery country!';
+                document.getElementById('revealedCountryName').innerText = secretCountry.name;
+                document.getElementById('finalGuessCount').innerText = guesses.length;
+                victoryModal.classList.remove('hidden');
+            }, 600);
+        }
+
+        function onGiveUp() {
+            if (isGameFinished) return;
+            isGameFinished = true;
+            stats.played++;
+            stats.streak = 0;
+            saveStats();
+
+            // Highlight target on globe
+            rotateGlobeTo(secretCountry.lat, secretCountry.lon);
+
+            document.getElementById('modalIcon').innerText = '🏳️';
+            document.getElementById('victoryTitle').innerText = 'Game Over';
+            document.getElementById('victorySubtitle').innerText = 'The secret mystery country was:';
+            document.getElementById('revealedCountryName').innerText = secretCountry.name;
+            document.getElementById('finalGuessCount').innerText = guesses.length;
+            victoryModal.classList.remove('hidden');
+        }
+
+        countryInput.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase().trim();
+            autocompleteList.innerHTML = '';
+
+            if (!query) {
+                autocompleteList.classList.add('hidden');
+                return;
+            }
+
+            const matches = countriesData.filter(c => c.name.toLowerCase().includes(query)).slice(0, 6);
+
+            if (matches.length > 0) {
+                autocompleteList.classList.remove('hidden');
+                matches.forEach(m => {
+                    const item = document.createElement('div');
+                    item.className = "px-4 py-2.5 hover:bg-slate-800/80 cursor-pointer text-xs text-slate-200 font-medium flex items-center justify-between";
+                    item.innerHTML = `<span>${m.name}</span> <i class="fa-solid fa-angle-right text-[10px] text-slate-500"></i>`;
+                    item.addEventListener('click', () => {
+                        handleGuess(m.name);
+                    });
+                    autocompleteList.appendChild(item);
+                });
+            } else {
+                autocompleteList.classList.add('hidden');
+            }
+        });
+
+        countryInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const val = countryInput.value;
+                if (val) handleGuess(val);
+            }
+        });
+
+        submitGuessBtn.addEventListener('click', () => {
+            const val = countryInput.value;
+            if (val) handleGuess(val);
+        });
+
+        // Toggle Distance Unit (KM / Miles)
+        unitToggleBtn.addEventListener('click', () => {
+            distanceUnit = distanceUnit === 'KM' ? 'MILES' : 'KM';
+            unitText.innerText = distanceUnit;
+            renderGuessList();
+        });
+
+        // Modals Controls
+        helpBtn.addEventListener('click', () => helpModal.classList.remove('hidden'));
+        statsBtn.addEventListener('click', () => {
+            document.getElementById('statPlayed').innerText = stats.played;
+            document.getElementById('statWon').innerText = stats.won;
+            document.getElementById('statStreak').innerText = stats.streak;
+            const avg = stats.won > 0 ? (stats.totalGuesses / stats.won).toFixed(1) : 0;
+            document.getElementById('statAvg').innerText = avg;
+            statsModal.classList.remove('hidden');
+        });
+
+        document.querySelectorAll('.closeModalBtn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                helpModal.classList.add('hidden');
+                statsModal.classList.add('hidden');
+                victoryModal.classList.add('hidden');
+            });
+        });
+
+        giveUpBtn.addEventListener('click', onGiveUp);
+        newGameBtn.addEventListener('click', startNewGame);
+        playAgainBtn.addEventListener('click', () => {
+            victoryModal.classList.add('hidden');
+            startNewGame();
+        });
+
+        shareBtn.addEventListener('click', () => {
+            const text = `🌐 Globle 3D - Guessed ${secretCountry.name} in ${guesses.length} guesses!`;
+            if (navigator.clipboard) {
+                document.execCommand('copy');
+                showToast("Results copied to clipboard!");
+            }
+        });
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.classList.remove('opacity-0');
+            setTimeout(() => toast.classList.add('opacity-0'), 2500);
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('globeContainer');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        // Initialize application on page load
+        window.onload = function() {
+            loadStats();
+            initThreeJS();
+            fetchWorldData();
+        };
+    </script>
+</body>
+</html>
